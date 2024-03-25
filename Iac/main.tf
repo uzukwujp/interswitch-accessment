@@ -10,8 +10,7 @@ terraform {
 # Configure the AWS Provider
 provider "aws" {
   region = "us-east-1"
-  //access_key =  AWS_ACCESS_KEY_ID
- // secret_key = AWS_SECRET_ACCESS_KEY
+
 }
 
 #Create VPC
@@ -75,21 +74,18 @@ resource "aws_internet_gateway" "my-internet-gateway" {
   }
 }
 
-
-
 # Created a Routes-Table
 resource "aws_route_table" "Public-Route-Table" {
    vpc_id     = aws_vpc.my-vpc-02.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.gw.id
+    gateway_id = aws_internet_gateway.my-internet-gateway.id
   }
-
-  route {
-    ipv6_cidr_block        = "::/0"
-    egress_only_gateway_id = aws_egress_only_internet_gateway.Public-Route-Table.id
-  }
+  # route {
+  #   ipv6_cidr_block        = "::/0"
+  #   egress_only_gateway_id = aws_egress_only_internet_gateway.id
+  # }
 
   tags = {
     Name = "Public-Route-Table"
@@ -108,43 +104,43 @@ resource "aws_route_table_association" "Public-subnet-2-association" {
 }
 
 
-
-resource "aws_nat_gateway" "Private-Subnet-1-NAT" {
-  allocation_id = aws_eip.my-internet-gateway.id
-  subnet_id     = aws_subnet.Private-subnet-1.id
-
-  tags = {
-    Name = "Private-Subnet-1-NAT"
-  }
-
-  # To ensure proper ordering, it is recommended to add an explicit dependency
-  # on the Internet Gateway for the VPC.
-  depends_on = [aws_internet_gateway.my-internet-gateway]
-}
-
-
-resource "aws_nat_gateway" "Private-Subnet-2-NAT" {
-  allocation_id = aws_eip.Private-Subnet-2-NAT.id
-  subnet_id     = aws_subnet.Private-subnet-2.id
-
-  tags = {
-    Name = "Private-Subnet-2-NAT"
-  }
-
-  # To ensure proper ordering, it is recommended to add an explicit dependency
-  # on the Internet Gateway for the VPC.
+resource "aws_eip" "nat_1" {
+  domain   = "vpc"
   depends_on = [aws_internet_gateway.my-internet-gateway]
 }
 
 
 
-# Created a Routes-Table for the Private-route-Table
+resource "aws_eip" "nat_2" {
+  domain   = "vpc"
+  depends_on = [aws_internet_gateway.my-internet-gateway]
+}
+
+resource "aws_nat_gateway" "natgateway_1" {
+  allocation_id = aws_eip.nat_1
+  subnet_id     = aws_subnet.Private-Subnet-1.id
+
+  tags = {
+    Name = "natgateway-1"
+  }
+}
+
+resource "aws_nat_gateway" "natgateway_2" {
+  allocation_id = aws_eip.nat_2
+  subnet_id     = aws_subnet.Private-Subnet-2.id
+
+  tags = {
+    Name = "natgateway-2"
+  }
+}
+
+# # Created a Routes-Table for the Private-route-Table
 resource "aws_route_table" "Private-subnet-1-rtb" {
    vpc_id     = aws_vpc.my-vpc-02.id
 
-  route {
+route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.Private-Subnet-1-NAT.id
+    gateway_id = aws_nat_gateway.natgateway_1
   }
 
 #   route {
@@ -158,25 +154,21 @@ resource "aws_route_table" "Private-subnet-1-rtb" {
 }
 
 
-
-# Created a Routes-Table for the Private-route-Table
+ # Created a Routes-Table for the Private-route-Table
 resource "aws_route_table" "Private-subnet-2-rtb" {
    vpc_id     = aws_vpc.my-vpc-02.id
 
 route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.Private-Subnet-1-NAT.id
+    gateway_id = aws_nat_gateway.natgateway_2
   }
 
-#   route {
-#     ipv6_cidr_block        = "::/0"
-#     egress_only_gateway_id = aws_egress_only_internet_gateway.Public-Route-Table.id
-#   }
 
   tags = {
     Name = "Private-subnet-2-rtb"
   }
 }
+
 
 resource "aws_security_group" "POC-SG" {
   name        = "POC-SG"
@@ -188,23 +180,9 @@ resource "aws_security_group" "POC-SG" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
-
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
-
-
-
-
 #ECS SET UP
-
 resource "aws_ecs_cluster" "POC-Assesment1" {
   name = "white-hart"
 
@@ -214,42 +192,7 @@ resource "aws_ecs_cluster" "POC-Assesment1" {
   }
 }
 
-
-# module "ecs_cluster" {
-#   source = "terraform-aws-modules/ecs/aws//modules/cluster"
-
-#   cluster_name = "POC-Assesment1"
-
-#   cluster_configuration = {
-#     execute_command_configuration = {
-#       logging = "OVERRIDE"
-#       log_configuration = {
-#         cloud_watch_log_group_name = "/aws/ecs/aws-ec2"
-#       }
-#     }
-#   }
-
-#   fargate_capacity_providers = {
-#     FARGATE = {
-#       default_capacity_provider_strategy = {
-#         weight = 50
-#       }
-#     }
-#     FARGATE_SPOT = {
-#       default_capacity_provider_strategy = {
-#         weight = 50
-#       }
-#     }
-#   }
-
-#   tags = {
-#     Environment = "Development"
-#     Project     = "EcsEc2"
-#   }
-# }
-
-
-# TASK Defination file
+# # TASK Defination file
 resource "aws_ecs_task_definition" "poc-Assesment" {
   family                = "poc-Assesment"
   container_definitions = <<TASK_DEFINITION
@@ -288,16 +231,13 @@ TASK_DEFINITION
 }
 
 
-
 # service  defination
 resource "aws_ecs_service" "Poc-Assessment" {
   name            = "Poc-Assessment"
   cluster         = aws_ecs_cluster.POC-Assesment1.id
   task_definition = aws_ecs_task_definition.poc-Assesment.arn
   desired_count   = 2
- // iam_role        = aws_iam_role.foo.arn
-  //depends_on      = [aws_iam_role_policy.foo]
-
+  
   ordered_placement_strategy {
     type  = "binpack"
     field = "cpu"
@@ -322,4 +262,3 @@ network_configuration {
     expression = "attribute:ecs.availability-zone in [us-east-1a, us-east-1b]"
   }
 }
-
