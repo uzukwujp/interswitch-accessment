@@ -1,3 +1,4 @@
+
 # Copyright (c) HashiCorp, Inc.
 # SPDX-License-Identifier: MPL-2.0
 
@@ -15,6 +16,9 @@ LABEL name="http-echo" \
       version=$PRODUCT_VERSION \
       release=$PRODUCT_VERSION \
       summary="A test webserver that echos a response. You know, for kids." 
+
+# Create directory structure
+RUN mkdir -p /dist/$TARGETOS/$TARGETARCH
 
 COPY dist/$TARGETOS/$TARGETARCH/$BIN_NAME /
 
