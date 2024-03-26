@@ -1,1 +1,44 @@
 
+name: Docker Build and Push
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Build and Push Docker Images
+      env:
+        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        IMAGE_PREFIX:  ${{ secrets.IMAGE_PREFIX }}
+        
+      run: |
+          docker build -t $IMAGE_PREFIX/node1.4:latest .
+          docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
+          docker push $IMAGE_PREFIX/node1.4:latest
+
+  restart-ecs-cluster:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install AWS CLI
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y awscli
+
+    - name: Restart ECS Cluster
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        AWS_DEFAULT_REGION: us-east-1a
+
+      run: |
+        aws ecs update-service --cluster POC-Assesment-1 --service Poc-Assessment --force-new-deployment
