@@ -1,6 +1,5 @@
 DevOps Engineer Assessment Documentation
 
-Project Title: Interswitch - INTERNAL DevOps Engineer Assessment
 
 Introduction:
 
