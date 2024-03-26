@@ -21,9 +21,10 @@ jobs:
         IMAGE_PREFIX:  ${{ secrets.IMAGE_PREFIX }}
         
       run: |
-          docker build -t $IMAGE_PREFIX/node1.4:latest .
+          docker build -t $IMAGE_PREFIX/http-echo:latest .
           docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
-          docker push $IMAGE_PREFIX/node1.4:latest
+          trivy image --severity CRITICAL --exit-code 1 http-echo
+          docker push $IMAGE_PREFIX/http-echo:latest
 
   restart-ecs-cluster:
     runs-on: ubuntu-latest
