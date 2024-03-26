@@ -1,5 +1,5 @@
-aws_access_key           = "your-aws-access-key"
-aws_secret_key           = "your-aws-secret-key" 
+aws_access_key           = "your-cloudprovider-app-key"
+aws_secret_key           = "your-cloudprovider-secret-key" 
 aws_region               = "us-east-1"
 
 vpc_cidr                 = "10.0.0.0/16"

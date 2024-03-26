@@ -191,7 +191,7 @@ resource "aws_ecs_task_definition" "poc_assessment" {
       name      = "hashicorp-http-echo-container"
       image     =  "hashicorp/http-echo"
      
-      memory    = 512
+      
       essential = true
       portMappings = [
         {
@@ -203,29 +203,7 @@ resource "aws_ecs_task_definition" "poc_assessment" {
   ])
 }
 
-// ECS Service
-# resource "aws_ecs_service" "poc_assessment_service" {
-#   name            = "Poc-Assessment"
-#   cluster         = aws_ecs_cluster.poc_assessment.name
-#   task_definition = aws_ecs_task_definition.poc_assessment.arn
-#   desired_count   = 2
-  
-#   ordered_placement_strategy {
-#     type  = "binpack"
-#     field = "cpu"
-#   }
 
-#   network_configuration {
-#     subnets          = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id] 
-#     security_groups  = [aws_security_group.poc_sg.id]
-#   }
-
-#   load_balancer {
-#     target_group_arn = aws_lb_target_group.revamp_ecs_container.arn    
-#      container_name   = "hashicorp-http-echo-container"
-#     container_port   = 5678
-#   }
-# }
 
 
 // ECS Service
@@ -259,3 +237,39 @@ resource "aws_cloudwatch_log_group" "ecs_cluster" {
   name = "ecs_cluster"
 }
 
+
+ #Create CloudWatch Log Group for ECS container logs
+# resource "aws_cloudwatch_log_group" "ecs_logs" {
+#   name = "/ecs/your-ecs-cluster" # Adjust the log group name as per your requirements
+#   retention_in_days = 7 # Adjust retention period as needed
+# }
+
+# Create CloudWatch metric alarm for CPU utilization
+resource "aws_cloudwatch_metric_alarm" "ecs_cpu_alarm" {
+  alarm_name          = "ecs-cpu-alarm"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 300 # 5-minute period
+  statistic           = "Average"
+  threshold           = 70
+  alarm_description   = "Alarm when CPU utilization exceeds 70%"
+  alarm_actions       = [aws_sns_topic.notification_topic.arn]
+  
+  dimensions = {
+    ClusterName = aws_ecs_cluster.poc_assessment.id
+  }
+}
+
+# Create SNS topic for notifications
+resource "aws_sns_topic" "notification_topic" {
+  name = "ecs-cpu-usage-alert"
+}
+
+# Subscribe your email to the SNS topic
+resource "aws_sns_topic_subscription" "email_subscription" {
+  topic_arn = aws_sns_topic.notification_topic.arn
+  protocol  = "email"
+  endpoint  = "Josephifekwe97@gmail.com" 
+}
