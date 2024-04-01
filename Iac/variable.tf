@@ -77,5 +77,13 @@ variable "revamp_elb_name" {
   description = "Name for ELB"
 }
 
+variable "container_port" {
+  
+}
+
+variable "task_execution_role" {
+  
+}
+
 
 // Define other variables as needed...

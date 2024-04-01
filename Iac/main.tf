@@ -1,3 +1,4 @@
+
 terraform {
   required_providers {
     aws = {
@@ -8,8 +9,8 @@ terraform {
 }
 
 provider "aws" {
-  access_key = var.aws_access_key
-  secret_key = var.aws_secret_key
+  #access_key = var.aws_access_key
+  #secret_key = var.aws_secret_key
   region     = var.aws_region
 }
 
@@ -95,53 +96,124 @@ resource "aws_route_table_association" "public_subnet_2_association" {
   route_table_id = aws_route_table.public_route_table.id
 }
 
+resource "aws_route_table" "private_route_table_1" {
+   vpc_id = aws_vpc.my-vpc-02.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway_1.id
+  }
+
+  tags = {
+    Name = "Public-Route-Table"
+  }
+}
+
+resource "aws_route_table" "private_route_table_2" {
+   vpc_id = aws_vpc.my-vpc-02.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway_2.id
+  }
+
+  tags = {
+    Name = "Public-Route-Table"
+  }
+}
+
+resource "aws_route_table_association" "private_subnet_1_association" {
+  subnet_id      = aws_subnet.private_subnet_1.id
+  route_table_id = aws_route_table.private_route_table_1.id
+}
+
+resource "aws_route_table_association" "private_subnet_2_association" {
+  subnet_id      = aws_subnet.private_subnet_2.id
+  route_table_id = aws_route_table.private_route_table_2.id
+}
+
 // Elastic IPs
+
 resource "aws_eip" "nat_eip_1" {
-  vpc = true
+  domain   = "vpc"
+  depends_on = [aws_internet_gateway.my-internet-gateway]
 }
 
 resource "aws_eip" "nat_eip_2" {
-  vpc = true
+  domain   = "vpc"
+  depends_on = [aws_internet_gateway.my-internet-gateway]
 }
 
 // NAT Gateways
 resource "aws_nat_gateway" "nat_gateway_1" {
   allocation_id = aws_eip.nat_eip_1.id
-  subnet_id     = aws_subnet.private_subnet_1.id
+  subnet_id     = aws_subnet.public_subnet_1.id
 }
 
 resource "aws_nat_gateway" "nat_gateway_2" {
   allocation_id = aws_eip.nat_eip_2.id
-  subnet_id     = aws_subnet.private_subnet_2.id
+  subnet_id     = aws_subnet.public_subnet_2.id
 }
 
-// Security Group
-resource "aws_security_group" "poc_sg" {
+# Security group for ecs
+resource "aws_security_group" "ecs_security_group" {
   name        = "POC-SG"
   description = "Security group allowing ports 80"
   vpc_id      = aws_vpc.my-vpc-02.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 5678
-    to_port     = 5678
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
+resource "aws_security_group_rule" "allow_http_ingress_traffic" {
+  security_group_id = aws_security_group.ecs_security_group.id
+  from_port         = var.container_port
+  to_port           = var.container_port
+  type              = "ingress"
+  protocol          = "tcp"
+  source_security_group_id = aws_security_group.elb_security_group.id
+}
+
+resource "aws_security_group_rule" "allow_http_egress_traffic" {
+  security_group_id = aws_security_group.ecs_security_group.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 0
+  to_port           = 0
+  type              = "egress"
+  protocol          = "-1"
+}
+
+# security group for Loadbalancer
+
+resource "aws_security_group" "elb_security_group" {
+  name        = "application-load-balancer"
+  description = "Allow http inbound traffic from anywhere"
+  vpc_id      = aws_vpc.my-vpc-02.id
+}
+
+resource "aws_security_group_rule" "elb_allow_http_ingress_traffic" {
+  security_group_id = aws_security_group.elb_security_group.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 80
+  to_port           = 80
+  type              = "ingress"
+  protocol          = "tcp"
+}
+
+resource "aws_security_group_rule" "elb_allow_http_egress_traffic" {
+  security_group_id = aws_security_group.elb_security_group.id
+  cidr_blocks       = ["0.0.0.0/0"]
+  from_port         = 0
+  to_port           = 0
+  type              = "egress"
+  protocol          = "-1"
+}
+
+
+
 // Load Balancer
-resource "aws_lb" "revamp_elb" {
+resource "aws_lb" "poc-revamp-elb" {
   name               = var.revamp_elb_name
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.poc_sg.id]
+  security_groups    = [aws_security_group.elb_security_group.id]
   subnets            = [aws_subnet.public_subnet_1.id, aws_subnet.public_subnet_2.id]
   
   tags = {
@@ -150,61 +222,90 @@ resource "aws_lb" "revamp_elb" {
 }
 
 // Load Balancer Target Group
-resource "aws_lb_target_group" "revamp_ecs_containers" {
-  name        = "load-balancer-Group"
-  port        = 80
+resource "aws_lb_target_group" "poc_revamp_ecs_containers" {
+  name        = "poc-load-balancer-Group"
+  port        = var.container_port
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = aws_vpc.my-vpc-02.id
+  health_check {
+   path = "/"
+   healthy_threshold = "3"
+   interval = "30"
+   protocol = "HTTP"
+   matcher = "200"
+   timeout = "3"
+   unhealthy_threshold = "2"
+ }
+
 }
 
 // Load Balancer Listener
 resource "aws_lb_listener" "revamp_frontend_landing" {
-  load_balancer_arn = aws_lb.revamp_elb.arn
-  port              =  5678
+  load_balancer_arn = aws_lb.poc-revamp-elb.arn
+  port              =  80
   protocol          = "HTTP"
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.revamp_ecs_containers.arn
+    target_group_arn = aws_lb_target_group.poc_revamp_ecs_containers.arn
   }
 }
 
 // ECS Cluster
+
 resource "aws_ecs_cluster" "poc_assessment" {
   name = "white-hart"
+  configuration {
+    execute_command_configuration {
+      logging    = "OVERRIDE"
 
-  setting {
-    name  = "containerInsights"
-    value = "enabled"
+      log_configuration {
+        cloud_watch_log_group_name     = aws_cloudwatch_log_group.frontend_landing_page-apps.name
+      }
+    }
   }
 }
 
+
+resource "aws_cloudwatch_log_group" "frontend_landing_page-apps" {
+  name = "frontend-landing-page-log-group"
+}
+
 // ECS Task Definition
+
 resource "aws_ecs_task_definition" "poc_assessment" {
-  family                = "poc-Assessment"
+  family = "poc-Assessment"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu = 256
-  memory = 512
+  cpu       = 256
+  memory    = 512
+  execution_role_arn = var.task_execution_role
   container_definitions = jsonencode([
     {
       name      = "hashicorp-http-echo-container"
-      image     =  "hashicorp/http-echo"
-     
-      
+      image     = "hashicorp/http-echo"
       essential = true
+      logConfiguration = { 
+            logDriver = "awslogs",
+            options = { 
+               "awslogs-group" : "${aws_cloudwatch_log_group.frontend_landing_page-apps.name}",
+               "awslogs-region": "${var.aws_region}",
+               "awslogs-stream-prefix": "ecs"
+            }
+         },
       portMappings = [
         {
-          containerPort = 5678
-          hostPort = 5678
+          containerPort = var.container_port
         }
       ]
-    }
+    } 
   ])
+
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "X86_64"
+  }
 }
-
-
-
 
 // ECS Service
 resource "aws_ecs_service" "poc_assessment_service" {
@@ -212,21 +313,17 @@ resource "aws_ecs_service" "poc_assessment_service" {
   cluster         = aws_ecs_cluster.poc_assessment.name
   task_definition = aws_ecs_task_definition.poc_assessment.arn
   desired_count   = 2
+  launch_type = "FARGATE"
   
-  ordered_placement_strategy {
-    type  = "binpack"
-    field = "cpu"
-  }
-
   network_configuration {
     subnets          = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id] 
-    security_groups  = [aws_security_group.poc_sg.id]
+    security_groups  = [aws_security_group.ecs_security_group.id]
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.revamp_ecs_containers.arn
+    target_group_arn = aws_lb_target_group.poc_revamp_ecs_containers.arn
     container_name   = "hashicorp-http-echo-container"
-    container_port   = 5678
+    container_port   = var.container_port
   }
 }
 

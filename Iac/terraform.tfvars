@@ -17,5 +17,9 @@ private_subnet_1_az      = "us-east-1a"
 private_subnet_2_cidr    = "10.0.4.0/24"
 private_subnet_2_az      = "us-east-1b"
 
-revamp_elb_name          = "your-elb-name"
+revamp_elb_name          = "poc-accessment-elb"
+
+container_port           =  5678
+
+task_execution_role      =  "arn:aws:iam::062000045886:role/ecsTaskExecutionRole"
 
